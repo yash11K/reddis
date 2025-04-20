@@ -1,0 +1,92 @@
+package build.your.own.database;
+
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * The {@code DbMap} class acts as an in-memory key-value store similar to a simplified Redis.
+ *
+ * <p>This class stores key-value pairs in memory, where each value is wrapped in an {@link Entry}
+ * object that can optionally have an expiration timestamp.
+ *
+ * <p>It follows the Singleton pattern to ensure a single shared instance across the application.
+ *
+ * <h2>Features</h2>
+ * <ul>
+ *   <li>Supports setting and retrieving values with optional expiry.</li>
+ *   <li>Automatically removes expired keys during retrieval.</li>
+ *   <li>Can be persisted using {@code SerializeProtocol} to a file.</li>
+ * </ul>
+ */
+public class DbMap {
+  /** Singleton instance of the in-memory map. */
+  private static final DbMap inMemoryMapInstance = new DbMap(new HashMap<>());
+
+  private final Map<String, Entry> inMemoryMap;
+
+  /**
+   * Private constructor for singleton pattern.
+   *
+   * @param inMemoryMap the backing map used to store key-entry pairs
+   */
+  private DbMap(HashMap<String, Entry> inMemoryMap) {
+    this.inMemoryMap = inMemoryMap;
+  }
+
+  /**
+   * Returns the singleton instance of {@code DbMap}.
+   *
+   * @return the shared in-memory map instance
+   */
+  public static DbMap getInMemoryMap() {
+    return inMemoryMapInstance;
+  }
+
+
+  /**
+   * Retrieves the value associated with the given key.
+   * Checks for expiry and lazily removes K,V
+   *
+   * <p>If the key has expired, it is removed from the map and {@code null} is returned.
+   * If the key doesn't exist, {@code null} is returned.
+   *
+   * @param key the key to look up
+   * @return the value if present and not expired, otherwise {@code null}
+   */
+  public String getValue(String key){
+    Entry entry = inMemoryMap.get(key);
+    if (entry == null) return null;
+    if(entry.expiry !=null && entry.expiry.isBefore(LocalDateTime.now())){
+      inMemoryMap.remove(key);
+    }
+    if(inMemoryMap.get(key) != null){
+      return inMemoryMap.get(key).data;
+    }
+    return null;
+  }
+
+  /**
+   * Stores a key-value pair into the map with an optional expiration time.
+   *
+   * @param key the key to store
+   * @param val the value to store
+   * @param exp the expiration time (can be {@code null} if no expiry is desired)
+   */  public void putValue(String key, String val, LocalDateTime exp){
+    this.inMemoryMap.put(key, new Entry(exp, val));
+  }
+
+  /**
+   * TODO: IMPLEMENT SUPPORT FOR MULTIPLY DATA TYPES \n
+   * Represents a single entry in the {@code DbMap}, holding the value and optional expiry timestamp.
+   *
+   * @param expiry the expiration time (can be null)
+   * @param data   the actual string value
+   */
+  public record Entry(
+          LocalDateTime expiry,
+          String data
+  ){}
+
+}
