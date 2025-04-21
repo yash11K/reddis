@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Map;
+import java.util.Set;
 
 //TODO : ADD SUPPORT FOR MULTIPLE DATA TYPES
 
@@ -54,9 +55,15 @@ import java.util.Map;
  * </pre>
  */
 public class SerializeProtocol {
+  private final Logger logger = Logger.getInstance(SerializeProtocol.class);
+
+  private static final SerializeProtocol instance = new SerializeProtocol();
+
   private static final String MAGIC_HEADER = "BYDRDB";
   private static final Charset charsets = StandardCharsets.UTF_8;
-  private final Logger logger = Logger.getInstance(SerializeProtocol.class);
+
+  private SerializeProtocol() {
+  }
 
   /**
    *
@@ -64,7 +71,7 @@ public class SerializeProtocol {
    * @param path Defaults to system provided clientName and Dir
    * @throws IOException
    */
-  public void saveToFile(Map<String, DbMap.Entry> map, String path) throws IOException {
+  public void saveToFile(Set<Map.Entry<String, DbMap.Data>> map, String path) throws IOException {
     if(path == null) {
       path = Main.config.get("dbPath");
       logger.info("file-path " + path);
@@ -80,7 +87,7 @@ public class SerializeProtocol {
       int processedEntries = 0;
       int skippedEntries = 0;
 
-      for(Map.Entry<String, DbMap.Entry> entry : map.entrySet()) {
+      for(Map.Entry<String, DbMap.Data> entry : map) {
         if(entry.getValue() != null && entry.getValue().data() != null) {
           byte[] keyBytes = entry.getKey().getBytes(charsets);
           dataOutputStream.writeInt(keyBytes.length);
@@ -101,7 +108,7 @@ public class SerializeProtocol {
     }
   }
 
-  private void writeValue(DbMap.Entry entry, DataOutputStream dos) throws IOException {
+  private void writeValue(DbMap.Data entry, DataOutputStream dos) throws IOException {
     assert entry != null;
     byte[] data = entry.data().getBytes(charsets);
     dos.write(data);
@@ -121,5 +128,9 @@ public class SerializeProtocol {
       dos.writeByte(0);
       logger.debug("Wrote no expiry flag");
     }
+  }
+
+  public static synchronized SerializeProtocol getInstance(){
+    return instance;
   }
 }

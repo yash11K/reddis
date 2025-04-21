@@ -17,6 +17,7 @@ public class CommandRegistry {
     register("SET", new SetCommand());
     register("GET", new GetCommand());
     register("CONFIG", new ConfigCommand());
+    register("KEYS", new KeysCommand());
     logger.info("CommandRegistry initialization complete with " + registry.size() + " commands");
   }
 

@@ -1,6 +1,9 @@
 package build.your.own.tcp;
 
 import build.your.own.resp.RESP;
+import build.your.own.resp.RespData;
+import build.your.own.resp.error.InvalidCommandError;
+import build.your.own.resp.error.UnexpectedError;
 import build.your.own.tcp.cmd.CommandRegistry;
 import build.your.own.logger.Logger;
 
@@ -52,7 +55,7 @@ public class Process implements Runnable, AutoCloseable {
           
           logger.debug(String.format("Processing command: '%s'", cmd));
           CommandRegistry.CommandMatchResult cmdMatch = cmdRegistry.commandMatchResult(cmd);
-          String exec = null;
+          RespData exec = null;
 
           if(cmdMatch != null) {
             logger.debug(String.format("Executing command: %s with args: %s", 
@@ -61,10 +64,10 @@ public class Process implements Runnable, AutoCloseable {
             exec = cmdMatch.cmd().execute(cmdMatch.args());
           } else {
             logger.warn(String.format("Unknown command received: '%s'", cmd));
-            exec = "-ERR command not found, everyone needs help at some point";
+            exec = new InvalidCommandError("command not found, everyone needs help at some point");
           }
 
-          outputStream.write(RESP.serialize(exec, RESP.RESP_OPTIONS.BULK_STRING));
+          outputStream.write(exec.serialize());
           outputStream.flush();
           logger.debug("Command execution completed successfully");
 

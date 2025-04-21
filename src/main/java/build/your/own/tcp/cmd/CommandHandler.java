@@ -1,5 +1,7 @@
 package build.your.own.tcp.cmd;
 
+import build.your.own.resp.RespData;
+
 import java.util.List;
 
 /**
@@ -12,5 +14,5 @@ public interface CommandHandler {
    * @param args arguments for the command
    * @return what needs to be printed to the outputStream
    */
-  public String execute(List<String> args);
+  public RespData execute(List<String> args);
 }

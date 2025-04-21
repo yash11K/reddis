@@ -1,14 +1,14 @@
 package build.your.own.database;
 
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The {@code DbMap} class acts as an in-memory key-value store similar to a simplified Redis.
  *
- * <p>This class stores key-value pairs in memory, where each value is wrapped in an {@link Entry}
+ * <p>This class stores key-value pairs in memory, where each value is wrapped in an {@link Data}
  * object that can optionally have an expiration timestamp.
  *
  * <p>It follows the Singleton pattern to ensure a single shared instance across the application.
@@ -24,14 +24,14 @@ public class DbMap {
   /** Singleton instance of the in-memory map. */
   private static final DbMap inMemoryMapInstance = new DbMap(new HashMap<>());
 
-  private final Map<String, Entry> inMemoryMap;
+  private final Map<String, Data> inMemoryMap;
 
   /**
    * Private constructor for singleton pattern.
    *
    * @param inMemoryMap the backing map used to store key-entry pairs
    */
-  private DbMap(HashMap<String, Entry> inMemoryMap) {
+  private DbMap(HashMap<String, Data> inMemoryMap) {
     this.inMemoryMap = inMemoryMap;
   }
 
@@ -56,9 +56,9 @@ public class DbMap {
    * @return the value if present and not expired, otherwise {@code null}
    */
   public String getValue(String key){
-    Entry entry = inMemoryMap.get(key);
-    if (entry == null) return null;
-    if(entry.expiry !=null && entry.expiry.isBefore(LocalDateTime.now())){
+    Data data = inMemoryMap.get(key);
+    if (data == null) return null;
+    if(data.expiry !=null && data.expiry.isBefore(LocalDateTime.now())){
       inMemoryMap.remove(key);
     }
     if(inMemoryMap.get(key) != null){
@@ -73,9 +73,16 @@ public class DbMap {
    * @param key the key to store
    * @param val the value to store
    * @param exp the expiration time (can be {@code null} if no expiry is desired)
-   */  public void putValue(String key, String val, LocalDateTime exp){
-    this.inMemoryMap.put(key, new Entry(exp, val));
+   */
+  public void putValue(String key, String val, LocalDateTime exp){
+    this.inMemoryMap.put(key, new Data(exp, val));
   }
+
+
+  public Set<Map.Entry<String, Data>> getEntrySet(){
+    return this.inMemoryMap.entrySet();
+  }
+
 
   /**
    * TODO: IMPLEMENT SUPPORT FOR MULTIPLY DATA TYPES \n
@@ -84,9 +91,8 @@ public class DbMap {
    * @param expiry the expiration time (can be null)
    * @param data   the actual string value
    */
-  public record Entry(
+  public record Data(
           LocalDateTime expiry,
           String data
   ){}
-
 }
