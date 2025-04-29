@@ -1,5 +1,7 @@
 package build.your.own;
 
+import build.your.own.persist.SerializeProtocol;
+import build.your.own.persist.Snapshot;
 import build.your.own.tcp.Client;
 import build.your.own.logger.Logger;
 
@@ -15,12 +17,24 @@ public class Main {
   public static final Map<String, String> config = new HashMap<>();
 
   public static void main(String[] args) {
-    Logger.init(Logger.Level.INFO, Main.class);
+    Logger.init(Logger.Level.DEBUG, Main.class);
     logger.info("Starting Redis Implementation");
 
     logger.info("Process System Args: ");
     try{
       loadSystemArgs(args);
+      logger.info("Initialize Snapshot CRON");
+      Snapshot snapshot = new Snapshot();
+      //FOR DISASTER BACKUP
+//      snapshot.start();
+
+      //Reload SystemArgs after restart
+      try {
+        SerializeProtocol.getInstance().writeHeadersToCache();
+        SerializeProtocol.getInstance().loadDbMapFromCacheFile();
+      }catch (IOException e){
+        logger.error(String.format("Failed to reload from cache %s", e.getMessage()));
+      }
     }catch (IllegalArgumentException stop){
       return;
     }
@@ -67,7 +81,7 @@ public class Main {
       }
 
       if(config.get("dbfile") == null){
-        config.put("dbfile", LocalDateTime.now() + "rdb");
+        config.put("dbfile", LocalDateTime.now() + ".rdb");
         logger.warn("Setting default --dbfile " + config.get("dbfile"));
       }
 

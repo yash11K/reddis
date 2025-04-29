@@ -40,7 +40,7 @@ public class DbMap {
    *
    * @return the shared in-memory map instance
    */
-  public static DbMap getInMemoryMap() {
+  public synchronized static DbMap getInMemoryMap() {
     return inMemoryMapInstance;
   }
 
@@ -67,6 +67,17 @@ public class DbMap {
     return null;
   }
 
+
+  /**
+   * Stores a key-value pair into the map with an optional expiration time.
+   *
+   * @param key the key to store
+   * @param data {@link Data}
+   */
+  public void putValue(String key, Data data){
+    this.inMemoryMap.put(key, data);
+  }
+
   /**
    * Stores a key-value pair into the map with an optional expiration time.
    *
@@ -88,7 +99,7 @@ public class DbMap {
    * TODO: IMPLEMENT SUPPORT FOR MULTIPLY DATA TYPES \n
    * Represents a single entry in the {@code DbMap}, holding the value and optional expiry timestamp.
    *
-   * @param expiry the expiration time (can be null)
+   * @param expiry {@link LocalDateTime} the expiration time (can be null)
    * @param data   the actual string value
    */
   public record Data(

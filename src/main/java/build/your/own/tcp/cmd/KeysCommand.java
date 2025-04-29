@@ -27,7 +27,7 @@ public class KeysCommand implements CommandHandler{
       return arrays;
     }
     else{
-      return null;
+      return new BulkString("null");
     }
   }
 }

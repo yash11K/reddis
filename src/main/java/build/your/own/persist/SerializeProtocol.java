@@ -4,13 +4,15 @@ import build.your.own.database.DbMap;
 import build.your.own.logger.Logger;
 import build.your.own.Main;
 
-import java.io.DataOutputStream;
-import java.io.FileOutputStream;
+import java.io.*;
 import java.nio.charset.Charset;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -65,6 +67,40 @@ public class SerializeProtocol {
   private SerializeProtocol() {
   }
 
+
+  public void saveToFile(Set<Map.Entry<String, DbMap.Data>> map) throws IOException {
+    saveToFile(map, null);
+  }
+
+  public void saveEntryToFile(String key, DbMap.Data data) throws IOException {
+    saveEntryToFile(key, data, null);
+  }
+
+  private void saveEntryToFile(String key, DbMap.Data data, String path) throws IOException {
+    if(path == null) {
+      path = Main.config.get("dbPath");
+      logger.info("file-path " + path);
+    }
+    saveEntryToFile(key, data, null, new DataOutputStream(new FileOutputStream(path, true)));
+  }
+
+  public void loadDbMapFromCacheFile() throws IOException, IllegalAccessError{
+    loadDbMapFromCacheFile(null);
+  }
+
+  public void writeHeadersToCache() throws IOException {
+    writeHeadersToCache(null);
+  }
+
+  public void writeHeadersToCache(String path) throws IOException{
+    if(path == null){
+      path = Main.config.get("dbPath");
+    }
+    try (DataOutputStream dataOutputStream = new DataOutputStream(new FileOutputStream(path))) {
+      dataOutputStream.writeUTF(MAGIC_HEADER);
+    }
+  }
+
   /**
    *
    * @param map
@@ -83,33 +119,46 @@ public class SerializeProtocol {
     try (DataOutputStream dataOutputStream = new DataOutputStream(new FileOutputStream(path))) {
       dataOutputStream.writeUTF(MAGIC_HEADER);
       dataOutputStream.writeInt(map.size());
-      
       int processedEntries = 0;
       int skippedEntries = 0;
 
       for(Map.Entry<String, DbMap.Data> entry : map) {
         if(entry.getValue() != null && entry.getValue().data() != null) {
-          byte[] keyBytes = entry.getKey().getBytes(charsets);
-          dataOutputStream.writeInt(keyBytes.length);
-          dataOutputStream.write(keyBytes);
-          writeValue(entry.getValue(), dataOutputStream);
+          saveEntryToFile(entry.getKey(), entry.getValue(), path, dataOutputStream);
           processedEntries++;
+
         } else {
           skippedEntries++;
           logger.debug(String.format("Skipping null entry for key: %s", entry.getKey()));
         }
       }
-
-      logger.info(String.format("Serialization complete - Processed: %d, Skipped: %d", 
-          processedEntries, skippedEntries));
+        logger.info(String.format("Serialization complete - Processed: %d, Skipped: %d",
+                processedEntries, skippedEntries));
     } catch (IOException e) {
       logger.error(String.format("Failed to serialize database to file %s: %s", path, e.getMessage()));
       throw e;
     }
+
+  }
+
+  private void saveEntryToFile(String key, DbMap.Data data, String path, DataOutputStream dos) throws IOException {
+    if(path == null){
+      path = Main.config.get("dbPath");
+    }
+      if(key != null && data.data() != null) {
+        byte[] keyBytes = key.getBytes(charsets);
+        dos.writeInt(keyBytes.length);
+        dos.write(keyBytes);
+        writeValue(data, dos);
+      } else {
+        logger.debug(String.format("Skipping null entry for key: %s", key));
+      }
   }
 
   private void writeValue(DbMap.Data entry, DataOutputStream dos) throws IOException {
     assert entry != null;
+    int length = entry.data().length();
+    dos.writeInt(length);
     byte[] data = entry.data().getBytes(charsets);
     dos.write(data);
     writeExpiryForValue(entry.expiry(), dos);
@@ -130,7 +179,72 @@ public class SerializeProtocol {
     }
   }
 
+  private void loadDbMapFromCacheFile(String path) throws IOException, IllegalAccessError{
+    if(path == null){
+      path = Main.config.get("dbPath");
+    }
+
+    logger.info(String.format("Trying to search for existing cache file : %s", path));
+
+    //FileInputStream Just reads raw bytes, DataInputStream reads data in a  structured way from these raw bytes
+    try(DataInputStream dataInputStream = new DataInputStream(new FileInputStream(path))) {
+      String magicHeader = dataInputStream.readUTF();
+      if(!magicHeader.equals(MAGIC_HEADER)){
+        logger.error(String.format("Failed to recognize header %s", magicHeader));
+        throw new IllegalAccessError("Invalid File for preload caching");
+      }
+      else {
+        /*
+         *  * <pre> Serialization protocol
+         *  *   00 00 00 03   // key length = 3
+         *  *   66 6f 6f      // key bytes = 'f', 'o', 'o'
+         *  *   62 61 72      // value bytes = 'b', 'a', 'r'
+         *  *   01            // expiry flag = 1
+         *  *   00 00 01 89 6D 50 80 00  // epoch seconds
+         *  * </pre>
+         */
+
+        int totalEntries = dataInputStream.readInt();
+        DbMap dbMap = DbMap.getInMemoryMap();
+        logger.info(String.format("Total Entries to process -: %s", totalEntries));
+        while(totalEntries > 0){
+          int keyLength = dataInputStream.readInt();
+          byte[] key = dataInputStream.readNBytes(keyLength);
+
+          int valueLength = dataInputStream.readInt();
+          byte[] value = dataInputStream.readNBytes(valueLength);
+
+          boolean isExpiryValid = dataInputStream.readBoolean();
+          LocalDateTime expiry = null;
+          if(isExpiryValid){
+            long epoch = dataInputStream.readLong();
+            expiry = LocalDateTime.ofInstant(
+                    Instant.ofEpochMilli(epoch),
+                    ZoneId.systemDefault()
+            );
+          }
+
+          dbMap.putValue(new String(key), new String(value), expiry);
+          totalEntries--;
+        }
+      }
+    }
+  }
+
   public static synchronized SerializeProtocol getInstance(){
     return instance;
+  }
+
+  public static void main(String[] args) {
+    SerializeProtocol serializeProtocol = new SerializeProtocol();
+    Map<String, DbMap.Data> map = new HashMap<>();
+    map.put("poo", new DbMap.Data(LocalDateTime.now().plusDays(1), "shoo"));
+    map.put("foo", new DbMap.Data(LocalDateTime.now().plusDays(1), "bar"));
+    try{
+      serializeProtocol.saveToFile(map.entrySet(),"/tmp/redis/files/2025-04-27T11:07:36.906866rdb");
+      serializeProtocol.loadDbMapFromCacheFile("/tmp/redis/files/2025-04-27T11:07:36.906866rdb");
+    }catch (IOException | IllegalAccessError e){
+      throw new RuntimeException(e);
+    }
   }
 }
