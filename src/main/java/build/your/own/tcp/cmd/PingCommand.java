@@ -15,11 +15,6 @@ public class PingCommand implements CommandHandler {
   @Override
   public RespData execute(List<String> args) {
     logger.debug("Executing PING command");
-    try {
-      SerializeProtocol.getInstance().loadDbMapFromCacheFile();
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
     return new BulkString("PONG");
   }
 }

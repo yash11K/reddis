@@ -72,18 +72,6 @@ public class SerializeProtocol {
     saveToFile(map, null);
   }
 
-  public void saveEntryToFile(String key, DbMap.Data data) throws IOException {
-    saveEntryToFile(key, data, null);
-  }
-
-  private void saveEntryToFile(String key, DbMap.Data data, String path) throws IOException {
-    if(path == null) {
-      path = Main.config.get("dbPath");
-      logger.info("file-path " + path);
-    }
-    saveEntryToFile(key, data, null, new DataOutputStream(new FileOutputStream(path, true)));
-  }
-
   public void loadDbMapFromCacheFile() throws IOException, IllegalAccessError{
     loadDbMapFromCacheFile(null);
   }
@@ -96,14 +84,18 @@ public class SerializeProtocol {
     if(path == null){
       path = Main.config.get("dbPath");
     }
-    try (DataOutputStream dataOutputStream = new DataOutputStream(new FileOutputStream(path))) {
-      dataOutputStream.writeUTF(MAGIC_HEADER);
+    try (DataInputStream dataInputStream = new DataInputStream(new FileInputStream(path))) {
+      //Only write headers if the specified file is empty
+      if(dataInputStream.readAllBytes().length == 0){
+        try (DataOutputStream dataOutputStream = new DataOutputStream(new FileOutputStream(path))) {
+          dataOutputStream.writeUTF(MAGIC_HEADER);
+        }
+      }
     }
   }
 
   /**
    *
-   * @param map
    * @param path Defaults to system provided clientName and Dir
    * @throws IOException
    */
@@ -124,12 +116,18 @@ public class SerializeProtocol {
 
       for(Map.Entry<String, DbMap.Data> entry : map) {
         if(entry.getValue() != null && entry.getValue().data() != null) {
-          saveEntryToFile(entry.getKey(), entry.getValue(), path, dataOutputStream);
+          if (entry.getValue().expiry() == null){
+            saveEntryToFile(entry.getKey(), entry.getValue(), path, dataOutputStream);
+          } else if(entry.getValue().expiry().isAfter(LocalDateTime.now())){
+            saveEntryToFile(entry.getKey(), entry.getValue(), path, dataOutputStream);
+          } else {
+            skippedEntries++;
+            logger.error(String.format("Skipping expired entry for key: %s", entry.getKey()));
+          }
           processedEntries++;
-
         } else {
           skippedEntries++;
-          logger.debug(String.format("Skipping null entry for key: %s", entry.getKey()));
+          logger.error(String.format("Skipping null entry for key: %s", entry.getKey()));
         }
       }
         logger.info(String.format("Serialization complete - Processed: %d, Skipped: %d",
@@ -151,7 +149,7 @@ public class SerializeProtocol {
         dos.write(keyBytes);
         writeValue(data, dos);
       } else {
-        logger.debug(String.format("Skipping null entry for key: %s", key));
+        logger.error(String.format("Skipping null entry for key: %s", key));
       }
   }
 
@@ -162,7 +160,7 @@ public class SerializeProtocol {
     byte[] data = entry.data().getBytes(charsets);
     dos.write(data);
     writeExpiryForValue(entry.expiry(), dos);
-    logger.debug(String.format("Wrote value with length %d bytes%s", 
+    logger.error(String.format("Wrote value with length %d bytes%s",
         data.length, 
         entry.expiry() != null ? String.format(", expiry: %s", entry.expiry()) : ""));
   }
@@ -172,10 +170,10 @@ public class SerializeProtocol {
       dos.writeByte(1);
       long epochSeconds = expiry.toEpochSecond(ZoneOffset.UTC);
       dos.writeLong(epochSeconds);
-      logger.debug(String.format("Wrote expiry timestamp: %d", epochSeconds));
+      logger.error(String.format("Wrote expiry timestamp: %d", epochSeconds));
     } else {
       dos.writeByte(0);
-      logger.debug("Wrote no expiry flag");
+      logger.error("Wrote no expiry flag");
     }
   }
 
@@ -209,12 +207,17 @@ public class SerializeProtocol {
         logger.info(String.format("Total Entries to process -: %s", totalEntries));
         while(totalEntries > 0){
           int keyLength = dataInputStream.readInt();
+          logger.error(String.format("Key=%s", keyLength));
+
           byte[] key = dataInputStream.readNBytes(keyLength);
+          logger.error(String.format("Key=%s", Arrays.toString(key)));
 
           int valueLength = dataInputStream.readInt();
           byte[] value = dataInputStream.readNBytes(valueLength);
+          logger.error(String.format("value=%s", Arrays.toString(value)));
 
           boolean isExpiryValid = dataInputStream.readBoolean();
+          logger.error(String.format("isExpiry=%s", isExpiryValid));
           LocalDateTime expiry = null;
           if(isExpiryValid){
             long epoch = dataInputStream.readLong();
@@ -224,10 +227,13 @@ public class SerializeProtocol {
             );
           }
 
+          logger.error(String.format("isExpiry=%s", expiry));
           dbMap.putValue(new String(key), new String(value), expiry);
           totalEntries--;
         }
       }
+    }catch (EOFException endoffile){
+      logger.error("End Of file");
     }
   }
 

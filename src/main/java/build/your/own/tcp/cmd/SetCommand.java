@@ -13,55 +13,71 @@ import java.time.DateTimeException;
 import java.time.LocalDateTime;
 import java.util.List;
 
-public class SetCommand implements CommandHandler{
+public class SetCommand implements CommandHandler {
+
+  private static final String PX_OPTION = "px";
   private final Logger logger = Logger.getInstance(SetCommand.class);
 
   @Override
   public RespData execute(List<String> args) {
     logger.debug(String.format("Executing SET command with args: %s", args));
 
-    //Check if SET command as px flag? process expiry : store with expiry as null
-    try{
-      int expiryIndex = args.indexOf("px");
-      if(expiryIndex > 0){
-        assert expiryIndex == 2;
-        int expiry = expiryIndex + 1;
-        if(expiry < args.size()){
-          int expirySeconds = Integer.parseInt(args.get(expiry));
-          logger.debug(String.format("Setting key '%s' with expiry of %d seconds", args.get(0), expirySeconds));
-          DbMap.getInMemoryMap().putValue(args.get(0), args.get(1), LocalDateTime.now().plusSeconds(expirySeconds));
-          try {
-            SerializeProtocol.getInstance().saveEntryToFile(args.get(0), new DbMap.Data(LocalDateTime.now().plusSeconds(expirySeconds), args.get(1)));
-          }catch (IOException e){
-            logger.error(String.format("Failed to save entry to rdb file : %s", e.getMessage()));
-            throw new RuntimeException(e);
-          }
-          return new BulkString("OK");
-        }else{
-          logger.warn("Missing expiry value for px option");
-          return new IllegalArgumentError("illegal argument for -px expiry");
-        }
-      }
-    }catch (NumberFormatException e){
-      logger.error(String.format("Invalid expiry format: %s", e));
-      return new IllegalArgumentError("illegal argument px expiry needs to be a number");
-    }catch (DateTimeException dateTimeException){
-      logger.error(String.format("DateTime error: %s", dateTimeException.getMessage()));
-      return new IllegalArgumentError("date time exception");
-    }
-
-    if(args.size() < 2){
+    if (args.size() < 2) {
       logger.warn("Insufficient arguments for SET command");
-      return new IllegalArgumentError("not enough arguments specified ");
+      return new IllegalArgumentError("not enough arguments specified");
     }
 
-    try{
-      logger.debug(String.format("Setting key '%s' without expiry", args.get(0)));
-      DbMap.getInMemoryMap().putValue(args.get(0), args.get(1), null);
+    String key = args.get(0);
+    String value = args.get(1);
+
+    try {
+      LocalDateTime expiry = parseExpiry(args);
+      DbMap.getInMemoryMap().putValue(key, value, expiry);
+
+      // Offload serialization to a virtual thread
+      Thread.startVirtualThread(() -> {
+        try {
+          SerializeProtocol.getInstance().saveToFile(DbMap.getInMemoryMap().getEntrySet());
+        } catch (IOException e) {
+          e.printStackTrace();
+          logger.error("Background serialization failed");
+        }
+      });
+
+      logger.debug(String.format("Set key '%s' with%s expiry", key, expiry != null ? "" : "out"));
       return new BulkString("OK");
-    }catch (Exception e){
-      logger.error(String.format("Unexpected error in SET command: %s", e.getMessage()));
+
+    } catch (IllegalArgumentError e) {
+      logger.warn("SET command failed due to bad arguments: " + e.getMessage());
+      return e;
+    } catch (DateTimeException e) {
+      logger.error("DateTime error: " + e.getMessage());
+      return new IllegalArgumentError("date time exception");
+    } catch (Exception e) {
+      logger.error("Unexpected error in SET command: " + e.getMessage());
       return new UnexpectedError("Unexpected error");
+    }
+  }
+
+  private LocalDateTime parseExpiry(List<String> args) throws IllegalArgumentError {
+    int expiryIndex = args.indexOf(PX_OPTION);
+    if (expiryIndex == -1) return null;
+
+    // Ensure px is at the right index (e.g., SET key value px 1000)
+    if (expiryIndex != 2) {
+      throw new IllegalArgumentError("px flag must appear after key and value");
+    }
+
+    if (expiryIndex + 1 >= args.size()) {
+      throw new IllegalArgumentError("Missing expiry value for px option");
+    }
+
+    String expiryStr = args.get(expiryIndex + 1);
+    try {
+      int expirySeconds = Integer.parseInt(expiryStr);
+      return LocalDateTime.now().plusSeconds(expirySeconds);
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentError("px expiry must be a valid number");
     }
   }
 }

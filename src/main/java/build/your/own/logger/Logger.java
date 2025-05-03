@@ -1,77 +1,37 @@
 package build.your.own.logger;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+
+import org.slf4j.LoggerFactory;
 
 public class Logger {
-    public enum Level {
-        ERROR(1), WARN(2), INFO(3), DEBUG(4), TRACE(5);
-
-        private final int priority;
-
-        Level(int priority) {
-            this.priority = priority;
-        }
+    public Logger(org.slf4j.Logger internalLogger) {
+        this.internalLogger = internalLogger;
     }
 
-    private static Logger instance;
-    private final Level logLevel;
-    private final String className;
+    private final org.slf4j.Logger internalLogger;
 
-    private Logger(Level logLevel, String className) {
-        this.logLevel = logLevel;
-        this.className = className;
+
+    public static Logger getInstance(Class<?> clazz){
+        return new Logger(LoggerFactory.getLogger(clazz.getSimpleName()));
     }
 
-    public static synchronized Logger getInstance(Class<?> clazz) {
-        if (instance == null) {
-            instance = new Logger(Level.INFO, clazz.getSimpleName());
-        }
-        return instance;
+    public void info(String msg) {
+        internalLogger.info(msg);
     }
 
-    public static synchronized Logger getInstance() {
-        if (instance == null) {
-            instance = new Logger(Level.INFO, "Main");
-        }
-        return instance;
+    public void debug(String msg) {
+        internalLogger.debug(msg);
     }
 
-    public static synchronized void init(Level logLevel, Class<?> clazz) {
-        if (instance == null) {
-            instance = new Logger(logLevel, clazz.getSimpleName());
-        }
+    public void warn(String msg) {
+        internalLogger.warn(msg);
     }
 
-    private void log(Level level, String message) {
-        if (level.priority <= this.logLevel.priority) {
-            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-            String formattedMessage = String.format("[%s] [%s] [%s] %s", timestamp, level, className, message);
-            if (level == Level.ERROR) {
-                System.err.println(formattedMessage);
-            } else {
-                System.out.println(formattedMessage);
-            }
-        }
+    public void error(String msg) {
+        internalLogger.error(msg);
     }
 
-    public void error(String message) {
-        log(Level.ERROR, message);
-    }
-
-    public void warn(String message) {
-        log(Level.WARN, message);
-    }
-
-    public void info(String message) {
-        log(Level.INFO, message);
-    }
-
-    public void debug(String message) {
-        log(Level.DEBUG, message);
-    }
-
-    public void trace(String message) {
-        log(Level.TRACE, message);
+    public void trace(String msg) {
+        internalLogger.trace(msg);
     }
 }

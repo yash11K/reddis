@@ -21,13 +21,14 @@ public class Snapshot {
   private final DbMap db = DbMap.getInMemoryMap();
 
   public void start(){
-    scheduler.scheduleAtFixedRate(this::periodicSnapshots, 0, 24, TimeUnit.HOURS);
+    scheduler.scheduleAtFixedRate(this::periodicSnapshots, 5, 10, TimeUnit.SECONDS);
   }
 
   private void periodicSnapshots() {
     try{
       logger.info("Initiate Periodic Snapshot of Cache at : " + LocalDateTime.now());
-      SerializeProtocol.getInstance().saveToFile(db.getEntrySet(), Main.config.get("dir") + "/" + LocalDateTime.now() + ".rdb");
+//      SerializeProtocol.getInstance().saveToFile(db.getEntrySet(), Main.config.get("dir") + "/" + LocalDateTime.now() + ".rdb");
+      SerializeProtocol.getInstance().saveToFile(db.getEntrySet());
       logger.info("Next Snapshot scheduled at : " + LocalDateTime.now().plusHours(24));
     }catch (IOException e){
       logger.error("Error occurred while snapshot " + e);

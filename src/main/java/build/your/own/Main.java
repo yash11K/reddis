@@ -17,7 +17,6 @@ public class Main {
   public static final Map<String, String> config = new HashMap<>();
 
   public static void main(String[] args) {
-    Logger.init(Logger.Level.DEBUG, Main.class);
     logger.info("Starting Redis Implementation");
 
     logger.info("Process System Args: ");
@@ -26,20 +25,24 @@ public class Main {
       logger.info("Initialize Snapshot CRON");
       Snapshot snapshot = new Snapshot();
       //FOR DISASTER BACKUP
-//      snapshot.start();
+      snapshot.start();
 
       //Reload SystemArgs after restart
       try {
         SerializeProtocol.getInstance().writeHeadersToCache();
         SerializeProtocol.getInstance().loadDbMapFromCacheFile();
       }catch (IOException e){
+        e.printStackTrace();
         logger.error(String.format("Failed to reload from cache %s", e.getMessage()));
       }
     }catch (IllegalArgumentException stop){
       return;
+    }catch (RuntimeException e){
+      throw new RuntimeException(e);
     }
 
-    int port = 6379;
+    config.putIfAbsent("port", "6769");
+    int port = Integer.parseInt(config.get("port"));
     try (ServerSocket serverSocket = new ServerSocket(port)) {
       serverSocket.setReuseAddress(true);
       logger.info("Server started successfully on port " + port);
@@ -67,10 +70,24 @@ public class Main {
             i++;
             config.put("dir", args[i]);
             logger.info("Setting --dir to " + config.get("dir"));
+
           case "--dbfile":
             i++;
             config.put("dbfile",args[++i]);
             logger.info("Setting --dbfile to " + config.get("dbfile"));
+          case "--port":
+            i++;
+            try{
+              int port = Integer.parseInt(args[++i]);
+              config.put("port", Integer.toString(port));
+              logger.info("Setting --port to " + config.get("port"));
+            }catch (NumberFormatException numberFormatException){
+              logger.error("port should be a number");
+              throw new RuntimeException(numberFormatException);
+            }
+          case "--replicaof":
+            i++;
+
         }
       }
 

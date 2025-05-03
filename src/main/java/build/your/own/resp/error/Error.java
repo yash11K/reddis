@@ -6,7 +6,7 @@ import java.time.LocalDateTime;
 
 import static build.your.own.resp.RESP.CRLF;
 
-public abstract class Error implements RespData {
+public abstract class Error extends Throwable implements RespData {
   private final String message;
   private final String error;
   private final int code;
