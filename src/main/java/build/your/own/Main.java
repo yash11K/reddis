@@ -1,36 +1,41 @@
 package build.your.own;
 
+import build.your.own.configurations.SystemConfig;
+import build.your.own.database.DbMap;
 import build.your.own.persist.SerializeProtocol;
 import build.your.own.persist.Snapshot;
 import build.your.own.tcp.Client;
 import build.your.own.logger.Logger;
+import build.your.own.tcp.cmd.CommandRegistry;
+import build.your.own.utils.ArgumentsUtils;
 
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
 
 public class Main {
   private static final Logger logger = Logger.getInstance(Main.class);
-  public static final Map<String, String> config = new HashMap<>();
+
 
   public static void main(String[] args) {
-    logger.info("Starting Redis Implementation");
+    final SystemConfig config = new SystemConfig();
+    final DbMap inMemoryDb = new DbMap();
+    final SerializeProtocol serializeProtocol = new SerializeProtocol(config, inMemoryDb);
+    final CommandRegistry commandRegistry = new CommandRegistry(config, serializeProtocol);
 
+    logger.info("Starting Redis Server");
     logger.info("Process System Args: ");
     try{
-      loadSystemArgs(args);
+      ArgumentsUtils.loadSystemArgs(args, config);
       logger.info("Initialize Snapshot CRON");
-      Snapshot snapshot = new Snapshot();
+      Snapshot snapshot = new Snapshot(serializeProtocol);
       //FOR DISASTER BACKUP
       snapshot.start();
 
       //Reload SystemArgs after restart
       try {
-        SerializeProtocol.getInstance().writeHeadersToCache();
-        SerializeProtocol.getInstance().loadDbMapFromCacheFile();
+        serializeProtocol.writeHeadersToCache();
+        serializeProtocol.loadDbMapFromCacheFile();
       }catch (IOException e){
         e.printStackTrace();
         logger.error(String.format("Failed to reload from cache %s", e.getMessage()));
@@ -41,8 +46,12 @@ public class Main {
       throw new RuntimeException(e);
     }
 
-    config.putIfAbsent("port", "6769");
-    int port = Integer.parseInt(config.get("port"));
+    //set default port
+    config.getConfig().putIfAbsent("port", "6769");
+
+    //This will never fail as reverse integer parsing has been already tested
+    int port = Integer.parseInt(config.getConfig().get("port"));
+
     try (ServerSocket serverSocket = new ServerSocket(port)) {
       serverSocket.setReuseAddress(true);
       logger.info("Server started successfully on port " + port);
@@ -51,7 +60,7 @@ public class Main {
         try {
           Socket newClient = serverSocket.accept();
           logger.info("New client connected from: " + newClient.getRemoteSocketAddress());
-          new Thread(new Client(newClient)).start();
+          new Thread(new Client(newClient, commandRegistry)).start();
         } catch (IOException e) {
           logger.error("Failed to accept client connection: " + e.getMessage());
         }
@@ -60,54 +69,5 @@ public class Main {
       logger.error("Server startup failed: " + e.getMessage());
       e.printStackTrace();
     }
-  }
-
-  private static void loadSystemArgs(String[] args){
-    try{
-      for(int i = 0; i < args.length; i++){
-        switch (args[i]){
-          case "--dir":
-            i++;
-            config.put("dir", args[i]);
-            logger.info("Setting --dir to " + config.get("dir"));
-
-          case "--dbfile":
-            i++;
-            config.put("dbfile",args[++i]);
-            logger.info("Setting --dbfile to " + config.get("dbfile"));
-          case "--port":
-            i++;
-            try{
-              int port = Integer.parseInt(args[++i]);
-              config.put("port", Integer.toString(port));
-              logger.info("Setting --port to " + config.get("port"));
-            }catch (NumberFormatException numberFormatException){
-              logger.error("port should be a number");
-              throw new RuntimeException(numberFormatException);
-            }
-          case "--replicaof":
-            i++;
-
-        }
-      }
-
-      if(config.get("dir") == null){
-        //default directory for rdb files
-        config.put("dir", "/tmp/redis/files");
-        logger.warn("Setting default --dir " + config.get("dir"));
-      }
-
-      if(config.get("dbfile") == null){
-        config.put("dbfile", LocalDateTime.now() + ".rdb");
-        logger.warn("Setting default --dbfile " + config.get("dbfile"));
-      }
-
-      config.put("dbPath", config.get("dir") + "/" + config.get("dbfile"));
-      logger.info("Final rdb path -: " + config.get("dbPath"));
-
-    }catch (IndexOutOfBoundsException illegal){
-      throw new IllegalArgumentException();
-    }
-
   }
 }

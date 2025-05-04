@@ -11,14 +11,16 @@ import java.io.*;
 import java.util.UUID;
 
 public class Process implements Runnable, AutoCloseable {
+  private final Logger logger = Logger.getInstance(Process.class);
+
   private final UUID processId = UUID.randomUUID();
   private final BufferedReader input;
   private final OutputStream outputStream;
   private final Client client;
-  private final CommandRegistry cmdRegistry = CommandRegistry.getInstance();
-  private final Logger logger = Logger.getInstance(Process.class);
+  private final CommandRegistry cmdRegistry;
 
-  public Process(Client client) throws IOException {
+  public Process(Client client, CommandRegistry commandRegistry) throws IOException {
+    this.cmdRegistry = commandRegistry;
     this.input = new BufferedReader(new InputStreamReader(client.getSocket().getInputStream()));
     this.outputStream = new BufferedOutputStream(client.getSocket().getOutputStream());
     this.client = client;

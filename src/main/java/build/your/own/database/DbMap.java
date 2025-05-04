@@ -4,6 +4,11 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * The {@code DbMap} class acts as an in-memory key-value store similar to a simplified Redis.
@@ -21,29 +26,28 @@ import java.util.Set;
  * </ul>
  */
 public class DbMap {
-  /** Singleton instance of the in-memory map. */
-  private static final DbMap inMemoryMapInstance = new DbMap(new HashMap<>());
+  private final ConcurrentMap<String, Data> inMemoryMap;
+  /* ReentrantReadWriteLock Notes
+    Allows concurrent readers to access shared data
+    Allows only one writer at a time
+    Writer blocks all readers and writers
+    Readers block writers but don't block other readers
 
-  private final Map<String, Data> inMemoryMap;
+    Through these points we can intuitively understand the chronology of placing read and write locks
+    This gives better performance than synchronized because it allows multiple threads to read the data concurrently and not locks the resource completely and unfairly
+    This is useful when we have a lot of reads and few writes
+  */
+  private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+  private final Lock readLock = lock.readLock();
+  private final Lock writeLock = lock.writeLock();
 
   /**
    * Private constructor for singleton pattern.
    *
-   * @param inMemoryMap the backing map used to store key-entry pairs
    */
-  private DbMap(HashMap<String, Data> inMemoryMap) {
-    this.inMemoryMap = inMemoryMap;
+  public DbMap() {
+    this.inMemoryMap = new ConcurrentHashMap<>();
   }
-
-  /**
-   * Returns the singleton instance of {@code DbMap}.
-   *
-   * @return the shared in-memory map instance
-   */
-  public synchronized static DbMap getInMemoryMap() {
-    return inMemoryMapInstance;
-  }
-
 
   /**
    * Retrieves the value associated with the given key.
@@ -56,15 +60,37 @@ public class DbMap {
    * @return the value if present and not expired, otherwise {@code null}
    */
   public String getValue(String key){
-    Data data = inMemoryMap.get(key);
-    if (data == null) return null;
-    if(data.expiry !=null && data.expiry.isBefore(LocalDateTime.now())){
-      inMemoryMap.remove(key);
+    readLock.lock();
+
+    try{
+      Data data = inMemoryMap.get(key);
+      if (data == null) return null;
+
+      if(data.expiry !=null && data.expiry.isBefore(LocalDateTime.now())){
+        //Upgrade to write lock to remove expired key
+        //This upgrade is okay, vice versa is not true (from write to read)
+        readLock.unlock();
+        writeLock.lock();
+        try{
+          Data doubleCheck = inMemoryMap.get(key);
+          if(doubleCheck != null && doubleCheck.expiry != null && doubleCheck.expiry.isBefore(LocalDateTime.now())){
+            //Remove expired key
+            inMemoryMap.remove(key);
+          }
+        }finally {
+          //downgrade again
+          writeLock.unlock();
+          readLock.lock();
+        }
+        return null;
+      }
+
+      return data.data;
     }
-    if(inMemoryMap.get(key) != null){
-      return inMemoryMap.get(key).data;
+    finally {
+      //release read lock
+      readLock.unlock();
     }
-    return null;
   }
 
 
@@ -72,10 +98,9 @@ public class DbMap {
    * Stores a key-value pair into the map with an optional expiration time.
    *
    * @param key the key to store
-   * @param data {@link Data}
    */
-  public void putValue(String key, Data data){
-    this.inMemoryMap.put(key, data);
+  public void putValue(String key, String value){
+    putValue(key, value, null);
   }
 
   /**
@@ -86,7 +111,14 @@ public class DbMap {
    * @param exp the expiration time (can be {@code null} if no expiry is desired)
    */
   public void putValue(String key, String val, LocalDateTime exp){
-    this.inMemoryMap.put(key, new Data(exp, val));
+    writeLock.lock();
+    try{
+      inMemoryMap.put(key, new Data(exp, val));
+    }finally {
+      //release write lock
+      writeLock.unlock();
+    }
+
   }
 
 
@@ -94,6 +126,9 @@ public class DbMap {
     return this.inMemoryMap.entrySet();
   }
 
+  public ConcurrentMap<String, Data> getInMemoryMap() {
+    return inMemoryMap;
+  }
 
   /**
    * TODO: IMPLEMENT SUPPORT FOR MULTIPLY DATA TYPES \n

@@ -1,28 +1,27 @@
 package build.your.own.tcp.cmd;
 
+import build.your.own.configurations.SystemConfig;
 import build.your.own.logger.Logger;
+import build.your.own.persist.SerializeProtocol;
+
 import java.util.*;
 
 public class CommandRegistry {
-  private static final CommandRegistry commandRegistry = new CommandRegistry();
   private final Logger logger = Logger.getInstance(CommandRegistry.class);
   public record CommandMatchResult(CommandHandler cmd, List<String> args){}
 
   private final Map<String, CommandHandler> registry = new HashMap<>();
 
-  private CommandRegistry() {
+  public CommandRegistry(SystemConfig systemConfig, SerializeProtocol serializeProtocol) {
+
     logger.info("Initializing CommandRegistry with default commands");
     register("PING", new PingCommand());
     register("ECHO", new EchoCommand());
-    register("SET", new SetCommand());
-    register("GET", new GetCommand());
-    register("CONFIG", new ConfigCommand());
-    register("KEYS", new KeysCommand());
+    register("SET", new SetCommand(serializeProtocol));
+    register("GET", new GetCommand(serializeProtocol));
+    register("CONFIG", new ConfigCommand(systemConfig));
+    register("KEYS", new KeysCommand(serializeProtocol));
     logger.info("CommandRegistry initialization complete with " + registry.size() + " commands");
-  }
-
-  public static CommandRegistry getInstance(){
-    return commandRegistry;
   }
 
   public void register(String cmd, CommandHandler handler){

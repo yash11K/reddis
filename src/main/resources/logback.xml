@@ -1,10 +1,16 @@
 <configuration>
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>[%d{HH:mm:ss.SSS}] [%thread] %highlight(%-5level) [%level] [%logger{20}] %msg%n</pattern>
+            <pattern>
+                %cyan([%d{HH:mm:ss.SSS}]) %green([%thread]) %highlight(%-5level) %magenta([%logger{20}]) - %msg%n
+            </pattern>
         </encoder>
     </appender>
 
+    <!-- Optional: enable internal logback debugging -->
+    <!-- <statusListener class="ch.qos.logback.core.status.OnConsoleStatusListener" /> -->
+
+    <!-- Logger for your custom package -->
     <logger name="build.your.own" level="DEBUG" />
 
     <root level="DEBUG">

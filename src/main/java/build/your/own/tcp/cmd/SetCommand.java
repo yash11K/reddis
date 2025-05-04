@@ -14,9 +14,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public class SetCommand implements CommandHandler {
-
-  private static final String PX_OPTION = "px";
   private final Logger logger = Logger.getInstance(SetCommand.class);
+  private static final String PX_OPTION = "px";
+
+  private final SerializeProtocol serializeProtocol;
+
+  public SetCommand(SerializeProtocol serializeProtocol) {
+    this.serializeProtocol = serializeProtocol;
+  }
 
   @Override
   public RespData execute(List<String> args) {
@@ -32,12 +37,12 @@ public class SetCommand implements CommandHandler {
 
     try {
       LocalDateTime expiry = parseExpiry(args);
-      DbMap.getInMemoryMap().putValue(key, value, expiry);
+      serializeProtocol.getInMemoryMap().putValue(key, value, expiry);
 
       // Offload serialization to a virtual thread
       Thread.startVirtualThread(() -> {
         try {
-          SerializeProtocol.getInstance().saveToFile(DbMap.getInMemoryMap().getEntrySet());
+          serializeProtocol.saveToFile();
         } catch (IOException e) {
           e.printStackTrace();
           logger.error("Background serialization failed");

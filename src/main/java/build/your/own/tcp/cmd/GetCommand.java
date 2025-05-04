@@ -2,6 +2,7 @@ package build.your.own.tcp.cmd;
 
 import build.your.own.database.DbMap;
 import build.your.own.logger.Logger;
+import build.your.own.persist.SerializeProtocol;
 import build.your.own.resp.BulkString;
 import build.your.own.resp.RespData;
 import build.your.own.resp.error.IllegalArgumentError;
@@ -10,6 +11,13 @@ import java.util.List;
 
 public class GetCommand implements CommandHandler {
   private final Logger logger = Logger.getInstance(GetCommand.class);
+
+  private final SerializeProtocol serializeProtocol;
+
+  public GetCommand(SerializeProtocol serializeProtocol) {
+    this.serializeProtocol = serializeProtocol;
+  }
+
 
   @Override
   public RespData execute(List<String> args) {
@@ -21,7 +29,7 @@ public class GetCommand implements CommandHandler {
     }
     
     String key = args.getFirst();
-    String value = DbMap.getInMemoryMap().getValue(key);
+    String value = serializeProtocol.getInMemoryMap().getValue(key);
     logger.debug(String.format("GET operation - Key: '%s', Value found: %s", key, value != null));
     return new BulkString(value);
   }
